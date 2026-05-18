@@ -1,16 +1,16 @@
-import { useEffect, useRef, useCallback, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useStore } from '@/store';
 import { debounce } from '@/utils';
 
 export function useAutoSave(delay = 3000) {
-  const { hasUnsavedChanges, saveStandups } = useStore();
+  const { hasUnsavedChanges, editVersion, saveStandups } = useStore();
   const debouncedSave = useRef(debounce(saveStandups, delay));
 
   useEffect(() => {
     if (hasUnsavedChanges) {
       debouncedSave.current();
     }
-  }, [hasUnsavedChanges]);
+  }, [hasUnsavedChanges, editVersion]);
 
   return { hasUnsavedChanges, saveNow: saveStandups };
 }
@@ -34,8 +34,8 @@ export function useKeyboardShortcuts() {
       }
     };
 
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
+    globalThis.addEventListener('keydown', handler);
+    return () => globalThis.removeEventListener('keydown', handler);
   }, [saveStandups, expandAll, collapseAll]);
 }
 

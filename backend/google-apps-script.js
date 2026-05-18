@@ -30,6 +30,37 @@ function getSheet(name) {
   return ss.getSheetByName(name);
 }
 
+function formatDateForStorage(date) {
+  return Utilities.formatDate(date, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+}
+
+function normalizeDateValue(value) {
+  if (value instanceof Date) {
+    return formatDateForStorage(value);
+  }
+
+  if (typeof value === 'number' && !Number.isNaN(value)) {
+    // Handle serialized sheet date values if they appear as numbers.
+    return formatDateForStorage(new Date(Math.round((value - 25569) * 86400 * 1000)));
+  }
+
+  if (value === null || value === undefined) {
+    return '';
+  }
+
+  const str = String(value).trim();
+  if (str === '') {
+    return '';
+  }
+
+  const parsed = new Date(str);
+  if (!Number.isNaN(parsed.getTime())) {
+    return formatDateForStorage(parsed);
+  }
+
+  return str;
+}
+
 function doGet(e) {
   const action = e.parameter.action;
   let result;
@@ -96,7 +127,6 @@ function doPost(e) {
 function getMembers() {
   const sheet = getSheet('Members');
   const data = sheet.getDataRange().getValues();
-  const headers = data[0];
   const members = [];
 
   for (let i = 1; i < data.length; i++) {
@@ -169,13 +199,14 @@ function getStandups(date) {
   const sheet = getSheet('Standups');
   const data = sheet.getDataRange().getValues();
   const standups = [];
+  const targetDate = normalizeDateValue(date);
 
   for (let i = 1; i < data.length; i++) {
     const row = data[i];
-    if (row[1] === date) {
+    if (normalizeDateValue(row[1]) === targetDate) {
       standups.push({
         id: row[0],
-        date: row[1],
+        date: normalizeDateValue(row[1]),
         memberId: row[2],
         section: row[3],
         bulletText: row[4],
@@ -191,15 +222,16 @@ function getStandups(date) {
 function saveStandups(date, entries) {
   const sheet = getSheet('Standups');
   const data = sheet.getDataRange().getValues();
+  const targetDate = normalizeDateValue(date);
 
-  if (!date) {
+  if (!targetDate) {
     return { error: 'Date is required' };
   }
 
   // Remove existing entries for this date
   const rowsToDelete = [];
   for (let i = data.length - 1; i >= 1; i--) {
-    if (data[i][1] === date) {
+    if (normalizeDateValue(data[i][1]) === targetDate) {
       rowsToDelete.push(i + 1);
     }
   }
@@ -212,7 +244,7 @@ function saveStandups(date, entries) {
     entries.forEach(entry => {
       sheet.appendRow([
         entry.id,
-        entry.date,
+        targetDate,
         entry.memberId,
         entry.section,
         entry.bulletText,
@@ -228,14 +260,16 @@ function saveStandups(date, entries) {
 function duplicateDay(targetDate, previousDate) {
   const sheet = getSheet('Standups');
   const data = sheet.getDataRange().getValues();
+  const sourceDate = normalizeDateValue(previousDate);
+  const nextDate = normalizeDateValue(targetDate);
 
   // Get previous day entries
   const previousEntries = [];
   for (let i = 1; i < data.length; i++) {
-    if (data[i][1] === previousDate) {
+    if (normalizeDateValue(data[i][1]) === sourceDate) {
       previousEntries.push({
         id: Utilities.getUuid(),
-        date: targetDate,
+        date: nextDate,
         memberId: data[i][2],
         section: data[i][3],
         bulletText: data[i][4],

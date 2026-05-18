@@ -23,6 +23,9 @@ interface AppState {
   standups: MemberStandup[];
   standupsLoading: boolean;
   hasUnsavedChanges: boolean;
+  editVersion: number;
+  isSavingStandups: boolean;
+  needsResave: boolean;
   isDuplicating: boolean;
   fetchStandups: (date?: string) => Promise<void>;
   updateStandup: (memberId: string, standup: Partial<MemberStandup>) => void;
@@ -116,6 +119,9 @@ export const useStore = create<AppState>((set, get) => ({
   standups: [],
   standupsLoading: false,
   hasUnsavedChanges: false,
+  editVersion: 0,
+  isSavingStandups: false,
+  needsResave: false,
   isDuplicating: false,
   fetchStandups: async (date) => {
     const targetDate = date || get().selectedDate;
@@ -127,6 +133,7 @@ export const useStore = create<AppState>((set, get) => ({
         standups: organized,
         standupsLoading: false,
         hasUnsavedChanges: false,
+        editVersion: 0,
         expandedMembers: new Set(organized.map((s) => s.memberId)),
       });
     } catch (error) {
@@ -141,18 +148,44 @@ export const useStore = create<AppState>((set, get) => ({
         s.memberId === memberId ? { ...s, ...updates } : s
       ),
       hasUnsavedChanges: true,
+      editVersion: state.editVersion + 1,
     }));
   },
   saveStandups: async () => {
-    const { standups, selectedDate } = get();
+    if (get().isSavingStandups) {
+      set({ needsResave: true });
+      return;
+    }
+
+    set({ isSavingStandups: true });
+
     try {
-      const entries = flattenStandups(standups, selectedDate);
-      await standupsApi.save(selectedDate, entries);
-      set({ hasUnsavedChanges: false });
-      toast.success('Saved!', { duration: 1500 });
+      let shouldSaveAgain = true;
+
+      while (shouldSaveAgain) {
+        set({ needsResave: false });
+
+        const { standups, selectedDate } = get();
+        const entries = flattenStandups(standups, selectedDate);
+        await standupsApi.save(selectedDate, entries);
+
+        const latest = get();
+        const changedDuringSave =
+          latest.standups !== standups || latest.selectedDate !== selectedDate;
+        shouldSaveAgain = changedDuringSave || latest.needsResave;
+
+        if (shouldSaveAgain) {
+          set({ hasUnsavedChanges: true });
+        } else {
+          set({ hasUnsavedChanges: false });
+          toast.success('Saved!', { duration: 1500 });
+        }
+      }
     } catch (error) {
       toast.error('Failed to save');
       console.error(error);
+    } finally {
+      set({ isSavingStandups: false, needsResave: false });
     }
   },
   duplicatePreviousDay: async () => {
