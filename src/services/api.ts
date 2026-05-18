@@ -3,7 +3,20 @@ import { generateId } from '@/utils';
 
 const API_URL = import.meta.env.VITE_API_URL;
 // Domain-restricted GAS URLs (/a/macros/) require Workspace auth — use local fallback
-const USE_LOCAL = !API_URL || API_URL.includes('your-deployment-id') || API_URL.includes('/a/macros/');
+let FALLBACK_REASON = '';
+
+if (API_URL === undefined || API_URL === '') {
+  FALLBACK_REASON = 'VITE_API_URL is missing.';
+} else if (API_URL.includes('your-deployment-id')) {
+  FALLBACK_REASON = 'VITE_API_URL still has the placeholder deployment id.';
+} else if (API_URL.includes('/a/macros/')) {
+  FALLBACK_REASON = 'Domain-restricted Apps Script URL detected (/a/macros/).';
+}
+const USE_LOCAL = Boolean(FALLBACK_REASON);
+
+if (USE_LOCAL && import.meta.env.DEV) {
+  console.warn(`[Team Notes] Using localStorage backend. ${FALLBACK_REASON}`);
+}
 
 // ─── LocalStorage helpers (fallback when no backend) ───────────────────────
 const LS_MEMBERS = 'standup_members';

@@ -12,7 +12,7 @@
  * 8. Copy the deployment URL to your .env file as VITE_API_URL
  */
 
-const SPREADSHEET_ID = 'YOUR_SPREADSHEET_ID'; // Replace with your sheet ID
+const SPREADSHEET_ID = '1lSc3LRwDGZ2gZ5k6DhLrUooKTDyOCx2eTGAzbM4QYK4'; // Replace with your sheet ID
 
 // Handle CORS preflight
 function doOptions() {
