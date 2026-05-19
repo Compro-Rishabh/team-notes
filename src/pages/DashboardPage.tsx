@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Search, ChevronsUpDown, Copy, Expand, Shrink } from 'lucide-react';
+import { Search, Expand, Shrink } from 'lucide-react';
 import { useStore } from '@/store';
 import { useKeyboardShortcuts } from '@/hooks';
 import { StandupCard } from '@/components/StandupCard';
@@ -16,7 +16,6 @@ import { staggerContainer } from '@/animations';
 
 export function DashboardPage() {
   const {
-    members,
     standups,
     standupsLoading,
     membersLoading,
@@ -27,8 +26,6 @@ export function DashboardPage() {
     fetchStandups,
     expandAll,
     collapseAll,
-    duplicatePreviousDay,
-    isDuplicating,
   } = useStore();
 
   useKeyboardShortcuts();
@@ -47,9 +44,34 @@ export function DashboardPage() {
 
     if (inMember) return true;
 
-    const allBullets = [...s.yesterday, ...s.today, ...s.blockers, ...s.notes];
-    return allBullets.some((b) => b.text.toLowerCase().includes(q));
+    return s.tasks.some((task) => task.text.toLowerCase().includes(q));
   });
+
+  let content: React.ReactNode;
+  if (standupsLoading || membersLoading) {
+    content = (
+      <div className="space-y-4">
+        <StandupCardSkeleton />
+        <StandupCardSkeleton />
+        <StandupCardSkeleton />
+      </div>
+    );
+  } else if (filteredStandups.length === 0) {
+    content = <EmptyState />;
+  } else {
+    content = (
+      <motion.div
+        variants={staggerContainer}
+        initial="initial"
+        animate="animate"
+        className="space-y-3"
+      >
+        {filteredStandups.map((standup) => (
+          <StandupCard key={standup.memberId} standup={standup} />
+        ))}
+      </motion.div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -104,16 +126,6 @@ export function DashboardPage() {
           >
             <span className="hidden lg:inline">Collapse</span>
           </Button>
-          <Button
-            variant="secondary"
-            size="sm"
-            icon={<Copy className="w-3.5 h-3.5" />}
-            onClick={duplicatePreviousDay}
-            loading={isDuplicating}
-          >
-            <span className="hidden lg:inline">Duplicate Yesterday</span>
-            <span className="lg:hidden">Duplicate</span>
-          </Button>
         </div>
       </div>
 
@@ -121,26 +133,7 @@ export function DashboardPage() {
       {!standupsLoading && standups.length > 0 && <ProgressBar />}
 
       {/* Standup Cards */}
-      {standupsLoading || membersLoading ? (
-        <div className="space-y-4">
-          <StandupCardSkeleton />
-          <StandupCardSkeleton />
-          <StandupCardSkeleton />
-        </div>
-      ) : filteredStandups.length === 0 ? (
-        <EmptyState />
-      ) : (
-        <motion.div
-          variants={staggerContainer}
-          initial="initial"
-          animate="animate"
-          className="space-y-3"
-        >
-          {filteredStandups.map((standup) => (
-            <StandupCard key={standup.memberId} standup={standup} />
-          ))}
-        </motion.div>
-      )}
+      {content}
 
       {/* Keyboard Shortcuts Footer */}
       <div className="hidden md:flex items-center justify-center gap-4 pt-4 text-xs text-slate-400">

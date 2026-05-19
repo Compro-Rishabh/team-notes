@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { Member, MemberStandup, User } from '@/types';
 import { membersApi, standupsApi, organizeStandups, flattenStandups } from '@/services/api';
-import { formatDate, getPreviousBusinessDay, toBusinessDate } from '@/utils';
+import { formatDate, generateId, getPreviousBusinessDay, toBusinessDate } from '@/utils';
 import toast from 'react-hot-toast';
 
 interface AppState {
@@ -26,11 +26,9 @@ interface AppState {
   editVersion: number;
   isSavingStandups: boolean;
   needsResave: boolean;
-  isDuplicating: boolean;
   fetchStandups: (date?: string) => Promise<void>;
   updateStandup: (memberId: string, standup: Partial<MemberStandup>) => void;
   saveStandups: () => Promise<void>;
-  duplicatePreviousDay: () => Promise<void>;
 
   // UI
   expandedMembers: Set<string>;
@@ -122,13 +120,61 @@ export const useStore = create<AppState>((set, get) => ({
   editVersion: 0,
   isSavingStandups: false,
   needsResave: false,
-  isDuplicating: false,
   fetchStandups: async (date) => {
     const targetDate = date || get().selectedDate;
     set({ standupsLoading: true });
     try {
       const { standups: entries } = await standupsApi.getByDate(targetDate);
-      const organized = organizeStandups(entries, get().members);
+      const members = get().members;
+      const current = organizeStandups(entries, members);
+
+      const previousDate = getPreviousBusinessDay(targetDate);
+      const { standups: previousEntries } = await standupsApi.getByDate(previousDate);
+      const previous = organizeStandups(previousEntries, members);
+      const previousByMember = new Map(previous.map((item) => [item.memberId, item]));
+
+      const organized = current.map((item) => {
+        const previousForMember = previousByMember.get(item.memberId);
+        if (!previousForMember) {
+          return item;
+        }
+
+        const currentTasks = item.tasks.filter((task) => task.text.trim() !== '');
+        const openFromPrevious = previousForMember.tasks.filter(
+          (task) => task.text.trim() !== '' && !task.done
+        );
+
+        if (openFromPrevious.length === 0) {
+          return item;
+        }
+
+        const currentTextSet = new Set(
+          currentTasks.map((task) => task.text.trim().toLowerCase())
+        );
+        const carryTasks = openFromPrevious
+          .filter((task) => !currentTextSet.has(task.text.trim().toLowerCase()))
+          .map((task) => ({
+            ...task,
+            id: generateId(),
+            done: false,
+          }));
+
+        const combined = [...currentTasks, ...carryTasks].map((task, index) => ({
+          ...task,
+          order: index,
+        }));
+
+        if (combined.length === 0) {
+          return item;
+        }
+
+        return {
+          ...item,
+          tasks: combined,
+          updatedAt: item.updatedAt || previousForMember.updatedAt,
+        };
+      });
+
       set({
         standups: organized,
         standupsLoading: false,
@@ -188,35 +234,6 @@ export const useStore = create<AppState>((set, get) => ({
       set({ isSavingStandups: false, needsResave: false });
     }
   },
-  duplicatePreviousDay: async () => {
-    const { selectedDate, isDuplicating, standups } = get();
-    if (isDuplicating) return;
-
-    // Check if current day already has content
-    const hasContent = standups.some((s) =>
-      [...s.yesterday, ...s.today, ...s.blockers, ...s.notes].some(
-        (b) => b.text.trim() !== ''
-      )
-    );
-    if (hasContent) {
-      toast.error('Current day already has notes. Clear them first to duplicate.');
-      return;
-    }
-
-    set({ isDuplicating: true });
-    try {
-      const previousDate = getPreviousBusinessDay(selectedDate);
-      await standupsApi.duplicatePreviousDay(selectedDate, previousDate);
-      await get().fetchStandups(selectedDate);
-      toast.success('Previous day notes duplicated!');
-    } catch (error) {
-      toast.error('Failed to duplicate');
-      console.error(error);
-    } finally {
-      set({ isDuplicating: false });
-    }
-  },
-
   // UI
   expandedMembers: new Set<string>(),
   toggleMember: (memberId) => {

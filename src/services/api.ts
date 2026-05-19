@@ -1,4 +1,4 @@
-import { Member, StandupEntry, MemberStandup, BulletItem, StandupSection } from '@/types';
+import { Member, StandupEntry, MemberStandup, ChecklistItem } from '@/types';
 import { generateId } from '@/utils';
 
 const API_URL = import.meta.env.VITE_API_URL;
@@ -32,13 +32,21 @@ function lsSet(key: string, value: unknown) {
   localStorage.setItem(key, JSON.stringify(value));
 }
 
+function serializeQueryValue(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
+    return `${value}`;
+  }
+  return JSON.stringify(value);
+}
+
 // ─── Remote helpers ─────────────────────────────────────────────────────────
 async function apiCall<T>(action: string, params: Record<string, unknown> = {}): Promise<T> {
   const url = new URL(API_URL);
   url.searchParams.set('action', action);
   Object.entries(params).forEach(([key, value]) => {
     if (value !== undefined && value !== null) {
-      url.searchParams.set(key, String(value));
+      url.searchParams.set(key, serializeQueryValue(value));
     }
   });
 
@@ -119,20 +127,22 @@ export const standupsApi = {
     return apiPost<{ success: boolean }>('saveStandups', { date, entries });
   },
 
-  duplicatePreviousDay: (date: string, previousDate: string): Promise<{ success: boolean }> => {
-    if (USE_LOCAL) {
-      const all = lsGet<StandupEntry[]>(LS_STANDUPS, []);
-      const prev = all.filter((e) => e.date === previousDate);
-      if (prev.length === 0) {
-        return Promise.reject(new Error('No entries found for previous day'));
-      }
-      const duped = prev.map((e) => ({ ...e, id: generateId(), date, updatedAt: new Date().toISOString() }));
-      lsSet(LS_STANDUPS, [...all, ...duped]);
-      return Promise.resolve({ success: true });
-    }
-    return apiPost<{ success: boolean }>('duplicateDay', { date, previousDate });
-  },
 };
+
+function decodeChecklistText(raw: string): { text: string; done: boolean } {
+  if (raw.startsWith('[x] ')) {
+    return { text: raw.slice(4), done: true };
+  }
+  if (raw.startsWith('[ ] ')) {
+    return { text: raw.slice(4), done: false };
+  }
+  return { text: raw, done: false };
+}
+
+function encodeChecklistText(item: ChecklistItem): string {
+  const prefix = item.done ? '[x] ' : '[ ] ';
+  return `${prefix}${item.text}`;
+}
 
 // Transform raw standup entries into organized member standups
 export function organizeStandups(
@@ -143,36 +153,32 @@ export function organizeStandups(
 
   return activeMembers.map((member) => {
     const memberEntries = entries.filter((e) => e.memberId === member.id);
+    const checklistEntries = [...memberEntries].sort((a, b) => a.order - b.order);
 
-    const getSectionBullets = (section: StandupSection): BulletItem[] => {
-      const sectionEntries = memberEntries
-        .filter((e) => e.section === section)
-        .sort((a, b) => a.order - b.order);
+    const tasks: ChecklistItem[] = checklistEntries.length === 0
+      ? [{ id: generateId(), text: '', order: 0, done: false }]
+      : checklistEntries.map((e) => {
+        const parsed = decodeChecklistText(e.bulletText);
+        return {
+          id: e.id,
+          text: parsed.text,
+          order: e.order,
+          done: parsed.done,
+        };
+      });
 
-      if (sectionEntries.length === 0) {
-        return [{ id: generateId(), text: '', order: 0 }];
+    let latestUpdate = '';
+    memberEntries.forEach((entry) => {
+      if (entry.updatedAt > latestUpdate) {
+        latestUpdate = entry.updatedAt;
       }
-
-      return sectionEntries.map((e) => ({
-        id: e.id,
-        text: e.bulletText,
-        order: e.order,
-      }));
-    };
-
-    const latestUpdate = memberEntries.reduce(
-      (latest, e) => (e.updatedAt > latest ? e.updatedAt : latest),
-      ''
-    );
+    });
 
     return {
       memberId: member.id,
       memberName: member.name,
       memberEmail: member.email,
-      yesterday: getSectionBullets('yesterday'),
-      today: getSectionBullets('today'),
-      blockers: getSectionBullets('blockers'),
-      notes: getSectionBullets('notes'),
+      tasks,
       updatedAt: latestUpdate || undefined,
     };
   });
@@ -187,22 +193,18 @@ export function flattenStandups(
   const now = new Date().toISOString();
 
   standups.forEach((standup) => {
-    const sections: StandupSection[] = ['yesterday', 'today', 'blockers', 'notes'];
-    sections.forEach((section) => {
-      const bullets = standup[section];
-      bullets.forEach((bullet, index) => {
-        if (bullet.text.trim()) {
-          entries.push({
-            id: bullet.id,
-            date,
-            memberId: standup.memberId,
-            section,
-            bulletText: bullet.text,
-            order: index,
-            updatedAt: now,
-          });
-        }
-      });
+    standup.tasks.forEach((task, index) => {
+      if (task.text.trim()) {
+        entries.push({
+          id: task.id,
+          date,
+          memberId: standup.memberId,
+          section: 'todo',
+          bulletText: encodeChecklistText(task),
+          order: index,
+          updatedAt: now,
+        });
+      }
     });
   });
 

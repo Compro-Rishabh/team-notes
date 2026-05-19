@@ -12,6 +12,10 @@ export interface BulletItem {
   order: number;
 }
 
+export interface ChecklistItem extends BulletItem {
+  done: boolean;
+}
+
 export interface StandupEntry {
   id: string;
   date: string;
@@ -22,16 +26,13 @@ export interface StandupEntry {
   updatedAt: string;
 }
 
-export type StandupSection = 'yesterday' | 'today' | 'blockers' | 'notes';
+export type StandupSection = 'todo' | 'yesterday' | 'today' | 'blockers' | 'notes';
 
 export interface MemberStandup {
   memberId: string;
   memberName: string;
   memberEmail: string;
-  yesterday: BulletItem[];
-  today: BulletItem[];
-  blockers: BulletItem[];
-  notes: BulletItem[];
+  tasks: ChecklistItem[];
   updatedAt?: string;
 }
 

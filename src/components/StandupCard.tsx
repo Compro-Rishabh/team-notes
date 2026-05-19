@@ -1,7 +1,6 @@
-import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronDown, Clock } from 'lucide-react';
-import { MemberStandup, StandupSection, BulletItem } from '@/types';
+import { MemberStandup, ChecklistItem } from '@/types';
 import { useStore } from '@/store';
 import { Avatar } from './Avatar';
 import { BulletList } from './BulletList';
@@ -11,23 +10,18 @@ interface StandupCardProps {
   standup: MemberStandup;
 }
 
-export function StandupCard({ standup }: StandupCardProps) {
+export function StandupCard({ standup }: Readonly<StandupCardProps>) {
   const { expandedMembers, toggleMember, updateStandup } = useStore();
   const isExpanded = expandedMembers.has(standup.memberId);
 
-  const hasContent = [...standup.yesterday, ...standup.today, ...standup.blockers, ...standup.notes].some(
-    (b) => b.text.trim() !== ''
-  );
+  const hasContent = standup.tasks.some((task) => task.text.trim() !== '');
 
-  const totalBullets = [
-    ...standup.yesterday,
-    ...standup.today,
-    ...standup.blockers,
-    ...standup.notes,
-  ].filter((b) => b.text.trim()).length;
+  const totalTasks = standup.tasks.filter((task) => task.text.trim()).length;
+  const completedTasks = standup.tasks.filter((task) => task.text.trim() && task.done).length;
+  const openTasks = totalTasks - completedTasks;
 
-  const handleSectionChange = (section: StandupSection) => (items: BulletItem[]) => {
-    updateStandup(standup.memberId, { [section]: items });
+  const handleChecklistChange = (tasks: ChecklistItem[]) => {
+    updateStandup(standup.memberId, { tasks });
   };
 
   return (
@@ -51,7 +45,7 @@ export function StandupCard({ standup }: StandupCardProps) {
             <h3 className="font-medium text-slate-900 truncate">{standup.memberName}</h3>
             {hasContent && (
               <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700">
-                {totalBullets} items
+                {openTasks} open / {completedTasks} done
               </span>
             )}
             {!hasContent && (
@@ -88,28 +82,9 @@ export function StandupCard({ standup }: StandupCardProps) {
           >
             <div className="px-4 pb-5 pt-1 space-y-4 ml-13">
               <BulletList
-                section="yesterday"
-                items={standup.yesterday}
-                onChange={handleSectionChange('yesterday')}
-                placeholder="What did you work on yesterday?"
-              />
-              <BulletList
-                section="today"
-                items={standup.today}
-                onChange={handleSectionChange('today')}
-                placeholder="What will you work on today?"
-              />
-              <BulletList
-                section="blockers"
-                items={standup.blockers}
-                onChange={handleSectionChange('blockers')}
-                placeholder="Any blockers?"
-              />
-              <BulletList
-                section="notes"
-                items={standup.notes}
-                onChange={handleSectionChange('notes')}
-                placeholder="Additional notes..."
+                items={standup.tasks}
+                onChange={handleChecklistChange}
+                placeholder="Add a todo item..."
               />
             </div>
           </motion.div>

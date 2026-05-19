@@ -1,36 +1,20 @@
-import { useState, useRef, useEffect, KeyboardEvent } from 'react';
+import { useRef, KeyboardEvent } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { GripVertical, Plus, Trash2 } from 'lucide-react';
-import { BulletItem, StandupSection } from '@/types';
+import { Check, GripVertical, Plus } from 'lucide-react';
+import { ChecklistItem } from '@/types';
 import { generateId } from '@/utils';
 
 interface BulletListProps {
-  section: StandupSection;
-  items: BulletItem[];
-  onChange: (items: BulletItem[]) => void;
+  items: ChecklistItem[];
+  onChange: (items: ChecklistItem[]) => void;
   placeholder?: string;
 }
 
-const sectionLabels: Record<StandupSection, string> = {
-  yesterday: 'Yesterday',
-  today: 'Today',
-  blockers: 'Blockers',
-  notes: 'Additional Notes',
-};
-
-const sectionColors: Record<StandupSection, string> = {
-  yesterday: 'border-l-slate-300',
-  today: 'border-l-indigo-400',
-  blockers: 'border-l-red-400',
-  notes: 'border-l-amber-400',
-};
-
-export function BulletList({ section, items, onChange, placeholder }: BulletListProps) {
+export function BulletList({ items, onChange, placeholder }: Readonly<BulletListProps>) {
   const inputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
-  const [focusedId, setFocusedId] = useState<string | null>(null);
 
   const addBullet = (afterIndex: number) => {
-    const newItem: BulletItem = { id: generateId(), text: '', order: afterIndex + 1 };
+    const newItem: ChecklistItem = { id: generateId(), text: '', order: afterIndex + 1, done: false };
     const newItems = [...items];
     newItems.splice(afterIndex + 1, 0, newItem);
     // Reorder
@@ -45,7 +29,7 @@ export function BulletList({ section, items, onChange, placeholder }: BulletList
   const removeBullet = (index: number) => {
     if (items.length <= 1) {
       // Don't remove last bullet, just clear it
-      onChange([{ ...items[0], text: '' }]);
+      onChange([{ ...items[0], text: '', done: false }]);
       return;
     }
     const newItems = items.filter((_, i) => i !== index);
@@ -92,10 +76,39 @@ export function BulletList({ section, items, onChange, placeholder }: BulletList
     onChange(newItems);
   };
 
+  const toggleDone = (index: number) => {
+    const newItems = items.map((item, i) =>
+      i === index ? { ...item, done: !item.done } : item
+    );
+    onChange(newItems);
+  };
+
+  const clearCompleted = () => {
+    const active = items.filter((item) => !(item.done && item.text.trim() !== ''));
+    if (active.length === 0) {
+      onChange([{ id: generateId(), text: '', order: 0, done: false }]);
+      return;
+    }
+
+    onChange(active.map((item, index) => ({ ...item, order: index })));
+  };
+
+  const completedCount = items.filter((item) => item.done && item.text.trim() !== '').length;
+
   return (
-    <div className={`border-l-2 ${sectionColors[section]} pl-4 py-2`}>
-      <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
-        {sectionLabels[section]}
+    <div className="border-l-2 border-indigo-400 pl-4 py-2">
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+          Team Todo Checklist
+        </div>
+        {completedCount > 0 && (
+          <button
+            onClick={clearCompleted}
+            className="text-xs text-emerald-600 hover:text-emerald-700 font-medium"
+          >
+            Clear done ({completedCount})
+          </button>
+        )}
       </div>
       <div className="space-y-1">
         <AnimatePresence mode="popLayout">
@@ -110,7 +123,17 @@ export function BulletList({ section, items, onChange, placeholder }: BulletList
               className="group flex items-center gap-1"
             >
               <GripVertical className="w-3 h-3 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab flex-shrink-0" />
-              <span className="text-slate-400 text-sm flex-shrink-0">•</span>
+              <button
+                type="button"
+                onClick={() => toggleDone(index)}
+                className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 transition-colors ${
+                  item.done
+                    ? 'bg-emerald-500 border-emerald-500 text-white'
+                    : 'border-slate-300 hover:border-indigo-400'
+                }`}
+              >
+                {item.done && <Check className="w-3 h-3" />}
+              </button>
               <input
                 ref={(el) => {
                   if (el) inputRefs.current.set(item.id, el);
@@ -119,19 +142,11 @@ export function BulletList({ section, items, onChange, placeholder }: BulletList
                 value={item.text}
                 onChange={(e) => updateText(index, e.target.value)}
                 onKeyDown={(e) => handleKeyDown(e, index)}
-                onFocus={() => setFocusedId(item.id)}
-                onBlur={() => setFocusedId(null)}
                 placeholder={index === 0 ? placeholder || 'Type here...' : ''}
-                className="flex-1 bg-transparent border-none outline-none text-sm text-slate-700 placeholder:text-slate-300 py-1"
+                className={`flex-1 bg-transparent border-none outline-none text-sm placeholder:text-slate-300 py-1 ${
+                  item.done ? 'text-slate-400 line-through' : 'text-slate-700'
+                }`}
               />
-              {items.length > 1 && (
-                <button
-                  onClick={() => removeBullet(index)}
-                  className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-red-50 transition-all"
-                >
-                  <Trash2 className="w-3 h-3 text-red-400" />
-                </button>
-              )}
             </motion.div>
           ))}
         </AnimatePresence>

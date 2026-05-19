@@ -7,15 +7,20 @@ export function ProgressBar() {
 
   const activeMembers = members.filter((m) => m.active);
   const membersWithUpdates = standups.filter((s) =>
-    [...s.yesterday, ...s.today, ...s.blockers, ...s.notes].some((b) => b.text.trim())
+    s.tasks.some((task) => task.text.trim())
   ).length;
 
   const completionRate = activeMembers.length > 0
     ? Math.round((membersWithUpdates / activeMembers.length) * 100)
     : 0;
 
-  const totalBlockers = standups.reduce(
-    (acc, s) => acc + s.blockers.filter((b) => b.text.trim()).length,
+  const totalOpenTasks = standups.reduce(
+    (acc, s) => acc + s.tasks.filter((task) => task.text.trim() && !task.done).length,
+    0
+  );
+
+  const totalDoneTasks = standups.reduce(
+    (acc, s) => acc + s.tasks.filter((task) => task.text.trim() && task.done).length,
     0
   );
 
@@ -42,8 +47,8 @@ export function ProgressBar() {
       />
       <StatCard
         icon={<AlertTriangle className="w-4 h-4" />}
-        label="Blockers"
-        value={totalBlockers}
+        label="Open Tasks"
+        value={`${totalOpenTasks} (${totalDoneTasks} done)`}
         color="amber"
       />
     </div>
@@ -58,7 +63,7 @@ interface StatCardProps {
   progress?: number;
 }
 
-function StatCard({ icon, label, value, color, progress }: StatCardProps) {
+function StatCard({ icon, label, value, color, progress }: Readonly<StatCardProps>) {
   const colorMap: Record<string, string> = {
     indigo: 'bg-indigo-50 text-indigo-600',
     emerald: 'bg-emerald-50 text-emerald-600',
