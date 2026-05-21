@@ -22,8 +22,10 @@ export interface StandupEntry {
   memberId: string;
   section: StandupSection;
   bulletText: string;
+  isMarked: boolean;
   order: number;
   updatedAt: string;
+  expiresAt?: string;
 }
 
 export type StandupSection = 'todo' | 'yesterday' | 'today' | 'blockers' | 'notes';

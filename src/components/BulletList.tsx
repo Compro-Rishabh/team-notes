@@ -111,7 +111,7 @@ export function BulletList({ items, onChange, placeholder }: Readonly<BulletList
         )}
       </div>
       <div className="space-y-1">
-        <AnimatePresence mode="popLayout">
+        <AnimatePresence>
           {items.map((item, index) => (
             <motion.div
               key={item.id}

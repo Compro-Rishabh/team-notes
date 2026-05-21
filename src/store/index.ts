@@ -128,18 +128,34 @@ export const useStore = create<AppState>((set, get) => ({
       const members = get().members;
       const current = organizeStandups(entries, members);
 
-      const previousDate = getPreviousBusinessDay(targetDate);
-      const { standups: previousEntries } = await standupsApi.getByDate(previousDate);
-      const previous = organizeStandups(previousEntries, members);
-      const previousByMember = new Map(previous.map((item) => [item.memberId, item]));
+      // Only carry over from previous day if viewing today and member has no saved entries
+      const today = toBusinessDate(formatDate(new Date()));
+      const shouldCarryOver = targetDate === today;
 
-      const organized = current.map((item) => {
-        const previousForMember = previousByMember.get(item.memberId);
-        if (!previousForMember) {
-          return item;
+      // Track which members have actual saved data for today
+      const membersWithSavedData = new Set(entries.map((e) => e.memberId));
+
+      let organized = current;
+
+      if (shouldCarryOver) {
+        const previousDate = getPreviousBusinessDay(targetDate);
+        const { standups: previousEntries } = await standupsApi.getByDate(previousDate);
+        const previous = organizeStandups(previousEntries, members);
+        const previousByMember = new Map(previous.map((item) => [item.memberId, item]));
+
+        organized = current.map((item) => {
+          // Skip carry-over if this member already has saved data for today
+          if (membersWithSavedData.has(item.memberId)) {
+            return item;
+          }
+
+          const previousForMember = previousByMember.get(item.memberId);
+          if (!previousForMember) {
+            return item;
         }
 
         const currentTasks = item.tasks.filter((task) => task.text.trim() !== '');
+
         const openFromPrevious = previousForMember.tasks.filter(
           (task) => task.text.trim() !== '' && !task.done
         );
@@ -173,7 +189,8 @@ export const useStore = create<AppState>((set, get) => ({
           tasks: combined,
           updatedAt: item.updatedAt || previousForMember.updatedAt,
         };
-      });
+        });
+      }
 
       set({
         standups: organized,

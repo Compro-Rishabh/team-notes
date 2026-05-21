@@ -5,12 +5,20 @@ import { ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
 export function DatePicker() {
   const { selectedDate, setSelectedDate } = useStore();
 
-  const navigateDate = (direction: -1 | 1) => {
-    setSelectedDate(shiftBusinessDays(selectedDate, direction));
-  };
-
   const todayBusiness = toBusinessDate(formatDate(new Date()));
   const isToday = selectedDate === todayBusiness;
+
+  const navigateDate = (direction: -1 | 1) => {
+    const next = shiftBusinessDays(selectedDate, direction);
+    if (next > todayBusiness) return;
+    setSelectedDate(next);
+  };
+
+  const handleDateChange = (value: string) => {
+    const business = toBusinessDate(value);
+    if (business > todayBusiness) return;
+    setSelectedDate(business);
+  };
 
   return (
     <div className="flex items-center gap-2">
@@ -27,7 +35,8 @@ export function DatePicker() {
           <input
             type="date"
             value={selectedDate}
-            onChange={(e) => setSelectedDate(toBusinessDate(e.target.value))}
+            max={todayBusiness}
+            onChange={(e) => handleDateChange(e.target.value)}
             className="bg-transparent border-none outline-none text-sm font-medium text-slate-700 cursor-pointer"
           />
         </div>
@@ -35,7 +44,8 @@ export function DatePicker() {
 
       <button
         onClick={() => navigateDate(1)}
-        className="p-2 rounded-lg hover:bg-slate-100 transition-colors"
+        disabled={isToday}
+        className="p-2 rounded-lg hover:bg-slate-100 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
       >
         <ChevronRight className="w-4 h-4 text-slate-600" />
       </button>

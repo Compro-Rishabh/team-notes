@@ -1,148 +1,73 @@
 import { Member, StandupEntry, MemberStandup, ChecklistItem } from '@/types';
 import { generateId } from '@/utils';
+import { db } from './firebase';
+import {
+  collection,
+  doc,
+  getDocs,
+  setDoc,
+  deleteDoc,
+  query,
+  where,
+  writeBatch,
+} from 'firebase/firestore';
 
-const API_URL = import.meta.env.VITE_API_URL;
-// Domain-restricted GAS URLs (/a/macros/) require Workspace auth — use local fallback
-let FALLBACK_REASON = '';
-
-if (API_URL === undefined || API_URL === '') {
-  FALLBACK_REASON = 'VITE_API_URL is missing.';
-} else if (API_URL.includes('your-deployment-id')) {
-  FALLBACK_REASON = 'VITE_API_URL still has the placeholder deployment id.';
-} else if (API_URL.includes('/a/macros/')) {
-  FALLBACK_REASON = 'Domain-restricted Apps Script URL detected (/a/macros/).';
-}
-const USE_LOCAL = Boolean(FALLBACK_REASON);
-
-if (USE_LOCAL && import.meta.env.DEV) {
-  console.warn(`[Team Notes] Using localStorage backend. ${FALLBACK_REASON}`);
-}
-
-// ─── LocalStorage helpers (fallback when no backend) ───────────────────────
-const LS_MEMBERS = 'standup_members';
-const LS_STANDUPS = 'standup_standups';
-
-function lsGet<T>(key: string, fallback: T): T {
-  try {
-    const v = localStorage.getItem(key);
-    return v ? JSON.parse(v) : fallback;
-  } catch { return fallback; }
-}
-function lsSet(key: string, value: unknown) {
-  localStorage.setItem(key, JSON.stringify(value));
-}
-
-function serializeQueryValue(value: unknown): string {
-  if (typeof value === 'string') return value;
-  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
-    return `${value}`;
-  }
-  return JSON.stringify(value);
-}
-
-// ─── Remote helpers ─────────────────────────────────────────────────────────
-async function apiCall<T>(action: string, params: Record<string, unknown> = {}): Promise<T> {
-  const url = new URL(API_URL);
-  url.searchParams.set('action', action);
-  Object.entries(params).forEach(([key, value]) => {
-    if (value !== undefined && value !== null) {
-      url.searchParams.set(key, serializeQueryValue(value));
-    }
-  });
-
-  const response = await fetch(url.toString());
-  if (!response.ok) throw new Error(`API Error: ${response.statusText}`);
-  const data = await response.json();
-  if (data.error) throw new Error(data.error);
-  return data;
-}
-
-async function apiPost<T>(action: string, body: Record<string, unknown>): Promise<T> {
-  const response = await fetch(API_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain' },
-    body: JSON.stringify({ action, ...body }),
-  });
-  if (!response.ok) throw new Error(`API Error: ${response.statusText}`);
-  const data = await response.json();
-  if (data.error) throw new Error(data.error);
-  return data;
-}
+// ─── Firestore collections ──────────────────────────────────────────────────
+const membersCol = collection(db, 'members');
+const standupsCol = collection(db, 'standups');
 
 // ─── Members API ─────────────────────────────────────────────────────────────
 export const membersApi = {
-  getAll: (): Promise<{ members: Member[] }> => {
-    if (USE_LOCAL) {
-      return Promise.resolve({ members: lsGet<Member[]>(LS_MEMBERS, []) });
-    }
-    return apiCall<{ members: Member[] }>('getMembers');
+  getAll: async (): Promise<{ members: Member[] }> => {
+    const snapshot = await getDocs(membersCol);
+    const members = snapshot.docs.map((d) => d.data() as Member);
+    return { members };
   },
 
-  add: (memberData: Omit<Member, 'id' | 'createdAt'>): Promise<{ member: Member }> => {
-    if (USE_LOCAL) {
-      const members = lsGet<Member[]>(LS_MEMBERS, []);
-      const member: Member = { ...memberData, id: generateId(), createdAt: new Date().toISOString() };
-      lsSet(LS_MEMBERS, [...members, member]);
-      return Promise.resolve({ member });
-    }
-    return apiPost<{ member: Member }>('addMember', { member: memberData });
+  add: async (memberData: Omit<Member, 'id' | 'createdAt'>): Promise<{ member: Member }> => {
+    const member: Member = { ...memberData, id: generateId(), createdAt: new Date().toISOString() };
+    await setDoc(doc(membersCol, member.id), member);
+    return { member };
   },
 
-  update: (member: Member): Promise<{ member: Member }> => {
-    if (USE_LOCAL) {
-      const members = lsGet<Member[]>(LS_MEMBERS, []);
-      lsSet(LS_MEMBERS, members.map((m) => (m.id === member.id ? member : m)));
-      return Promise.resolve({ member });
-    }
-    return apiPost<{ member: Member }>('updateMember', { member });
+  update: async (member: Member): Promise<{ member: Member }> => {
+    await setDoc(doc(membersCol, member.id), member);
+    return { member };
   },
 
-  delete: (id: string): Promise<{ success: boolean }> => {
-    if (USE_LOCAL) {
-      const members = lsGet<Member[]>(LS_MEMBERS, []);
-      lsSet(LS_MEMBERS, members.filter((m) => m.id !== id));
-      return Promise.resolve({ success: true });
-    }
-    return apiPost<{ success: boolean }>('deleteMember', { id });
+  delete: async (id: string): Promise<{ success: boolean }> => {
+    await deleteDoc(doc(membersCol, id));
+    return { success: true };
   },
 };
 
 // ─── Standups API ─────────────────────────────────────────────────────────────
 export const standupsApi = {
-  getByDate: (date: string): Promise<{ standups: StandupEntry[] }> => {
-    if (USE_LOCAL) {
-      const all = lsGet<StandupEntry[]>(LS_STANDUPS, []);
-      return Promise.resolve({ standups: all.filter((e) => e.date === date) });
-    }
-    return apiCall<{ standups: StandupEntry[] }>('getStandups', { date });
+  getByDate: async (date: string): Promise<{ standups: StandupEntry[] }> => {
+    const q = query(standupsCol, where('date', '==', date));
+    const snapshot = await getDocs(q);
+    const standups = snapshot.docs.map((d) => d.data() as StandupEntry);
+    return { standups };
   },
 
-  save: (date: string, entries: StandupEntry[]): Promise<{ success: boolean }> => {
-    if (USE_LOCAL) {
-      const all = lsGet<StandupEntry[]>(LS_STANDUPS, []);
-      const without = all.filter((e) => e.date !== date);
-      lsSet(LS_STANDUPS, [...without, ...entries]);
-      return Promise.resolve({ success: true });
-    }
-    return apiPost<{ success: boolean }>('saveStandups', { date, entries });
-  },
+  save: async (date: string, entries: StandupEntry[]): Promise<{ success: boolean }> => {
+    // Delete existing entries for this date
+    const q = query(standupsCol, where('date', '==', date));
+    const snapshot = await getDocs(q);
+    const batch = writeBatch(db);
+    snapshot.docs.forEach((d) => batch.delete(d.ref));
 
+    // Add new entries
+    entries.forEach((entry) => {
+      batch.set(doc(standupsCol, entry.id), entry);
+    });
+
+    await batch.commit();
+    return { success: true };
+  },
 };
 
-function decodeChecklistText(raw: string): { text: string; done: boolean } {
-  if (raw.startsWith('[x] ')) {
-    return { text: raw.slice(4), done: true };
-  }
-  if (raw.startsWith('[ ] ')) {
-    return { text: raw.slice(4), done: false };
-  }
-  return { text: raw, done: false };
-}
 
-function encodeChecklistText(item: ChecklistItem): string {
-  const prefix = item.done ? '[x] ' : '[ ] ';
-  return `${prefix}${item.text}`;
-}
 
 // Transform raw standup entries into organized member standups
 export function organizeStandups(
@@ -158,14 +83,13 @@ export function organizeStandups(
     const tasks: ChecklistItem[] = checklistEntries.length === 0
       ? [{ id: generateId(), text: '', order: 0, done: false }]
       : checklistEntries.map((e) => {
-        const parsed = decodeChecklistText(e.bulletText);
-        return {
-          id: e.id,
-          text: parsed.text,
-          order: e.order,
-          done: parsed.done,
-        };
-      });
+          // Handle legacy data with [x]/[ ] prefixes
+          let text = e.bulletText;
+          let done = e.isMarked ?? false;
+          if (text.startsWith('[x] ')) { text = text.slice(4); done = true; }
+          else if (text.startsWith('[ ] ')) { text = text.slice(4); }
+          return { id: e.id, text, order: e.order, done };
+        });
 
     let latestUpdate = '';
     memberEntries.forEach((entry) => {
@@ -195,14 +119,19 @@ export function flattenStandups(
   standups.forEach((standup) => {
     standup.tasks.forEach((task, index) => {
       if (task.text.trim()) {
+        const expiresAt = task.done
+          ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+          : undefined;
         entries.push({
           id: task.id,
           date,
           memberId: standup.memberId,
           section: 'todo',
-          bulletText: encodeChecklistText(task),
+          bulletText: task.text,
+          isMarked: task.done,
           order: index,
           updatedAt: now,
+          ...(expiresAt && { expiresAt }),
         });
       }
     });
