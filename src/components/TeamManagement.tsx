@@ -14,11 +14,13 @@ export function TeamManagement() {
   const [editingMember, setEditingMember] = useState<Member | null>(null);
   const [formData, setFormData] = useState({ name: '', email: '', active: true });
 
-  const filteredMembers = members.filter(
-    (m) =>
-      m.name.toLowerCase().includes(search.toLowerCase()) ||
-      m.email.toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredMembers = members
+    .filter(
+      (m) =>
+        m.name.toLowerCase().includes(search.toLowerCase()) ||
+        m.email.toLowerCase().includes(search.toLowerCase())
+    )
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

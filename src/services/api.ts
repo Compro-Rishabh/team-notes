@@ -74,7 +74,9 @@ export function organizeStandups(
   entries: StandupEntry[],
   members: Member[]
 ): MemberStandup[] {
-  const activeMembers = members.filter((m) => m.active);
+  const activeMembers = members
+    .filter((m) => m.active)
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   return activeMembers.map((member) => {
     const memberEntries = entries.filter((e) => e.memberId === member.id);
