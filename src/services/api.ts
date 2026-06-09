@@ -50,14 +50,30 @@ export const standupsApi = {
     return { standups };
   },
 
-  save: async (date: string, entries: StandupEntry[]): Promise<{ success: boolean }> => {
-    // Delete existing entries for this date
+  save: async (
+    date: string,
+    entries: StandupEntry[],
+    memberIds: string[]
+  ): Promise<{ success: boolean }> => {
+    // Replace only the edited members for the selected date.
+    // This avoids wiping unrelated members' standups in concurrent sessions.
+    const memberIdSet = new Set(memberIds);
+
+    if (memberIdSet.size === 0) {
+      return { success: true };
+    }
+
     const q = query(standupsCol, where('date', '==', date));
     const snapshot = await getDocs(q);
     const batch = writeBatch(db);
-    snapshot.docs.forEach((d) => batch.delete(d.ref));
+    snapshot.docs.forEach((d) => {
+      const data = d.data() as StandupEntry;
+      if (memberIdSet.has(data.memberId)) {
+        batch.delete(d.ref);
+      }
+    });
 
-    // Add new entries
+    // Add new entries for edited members
     entries.forEach((entry) => {
       batch.set(doc(standupsCol, entry.id), entry);
     });
