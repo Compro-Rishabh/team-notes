@@ -23,7 +23,6 @@ interface AppState {
   standups: MemberStandup[];
   standupsLoading: boolean;
   hasUnsavedChanges: boolean;
-  dirtyMemberIds: Set<string>;
   editVersion: number;
   isSavingStandups: boolean;
   needsResave: boolean;
@@ -118,7 +117,6 @@ export const useStore = create<AppState>((set, get) => ({
   standups: [],
   standupsLoading: false,
   hasUnsavedChanges: false,
-  dirtyMemberIds: new Set<string>(),
   editVersion: 0,
   isSavingStandups: false,
   needsResave: false,
@@ -198,7 +196,6 @@ export const useStore = create<AppState>((set, get) => ({
         standups: organized,
         standupsLoading: false,
         hasUnsavedChanges: false,
-        dirtyMemberIds: new Set<string>(),
         editVersion: 0,
         expandedMembers: new Set(organized.map((s) => s.memberId)),
       });
@@ -214,7 +211,6 @@ export const useStore = create<AppState>((set, get) => ({
         s.memberId === memberId ? { ...s, ...updates } : s
       ),
       hasUnsavedChanges: true,
-      dirtyMemberIds: new Set([...state.dirtyMemberIds, memberId]),
       editVersion: state.editVersion + 1,
     }));
   },
@@ -232,11 +228,9 @@ export const useStore = create<AppState>((set, get) => ({
       while (shouldSaveAgain) {
         set({ needsResave: false });
 
-        const { standups, selectedDate, dirtyMemberIds } = get();
-        const dirtyIds = Array.from(dirtyMemberIds);
-        const dirtyStandups = standups.filter((s) => dirtyMemberIds.has(s.memberId));
-        const entries = flattenStandups(dirtyStandups, selectedDate);
-        await standupsApi.save(selectedDate, entries, dirtyIds);
+        const { standups, selectedDate } = get();
+        const entries = flattenStandups(standups, selectedDate);
+        await standupsApi.save(selectedDate, entries);
 
         const latest = get();
         const changedDuringSave =
@@ -246,7 +240,7 @@ export const useStore = create<AppState>((set, get) => ({
         if (shouldSaveAgain) {
           set({ hasUnsavedChanges: true });
         } else {
-          set({ hasUnsavedChanges: false, dirtyMemberIds: new Set<string>() });
+          set({ hasUnsavedChanges: false });
           toast.success('Saved!', { duration: 1500 });
         }
       }
